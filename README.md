@@ -10,7 +10,6 @@ datasets:
 - aamijar/muharaf-public
 - Omarkhaledok/muharaf-public-pages
 ---
- [demo](https://huggingface.co/spaces/sherif1313/Arabic-English-handwritten-OCR)
 
  <p align="center">
     <img src="https://github.com/sherif1313/Arabic-English-handwritten-OCR-v3/blob/main/d93f4651-06cd-4e4c-938e-fae97d6cd60c.png" width="400"/>

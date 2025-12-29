@@ -17,7 +17,7 @@ datasets:
 <p>
 
 <p align="center">
-        💜 <a href="https://chat.qwenlm.ai/"><b>Qwen Chat</b></a>&nbsp&nbsp | &nbsp&nbsp🤗 <a href="https://huggingface.co/sherif1313/Arabic-English-handwritten-OCR-v3">Hugging Face</a>&nbsp&nbsp |  &nbsp&nbsp📚 <a href="https://github.com/sherif1313/Arabic-English-handwritten-OCR-v3/tree/main">Cookbooks</a>&nbsp&nbsp 
+        💜 <a href="https://github.com/sherif1313/"><b>Github</b></a>&nbsp&nbsp | &nbsp&nbsp🤗 <a href="https://huggingface.co/sherif1313/Arabic-English-handwritten-OCR-v3">Hugging Face</a>&nbsp&nbsp |  &nbsp&nbsp📚 <a href="https://github.com/sherif1313/Arabic-English-handwritten-OCR-v3/tree/main">Cookbooks</a>&nbsp&nbsp 
 <br>
 🖥️ <a href="https://huggingface.co/spaces/sherif1313/Arabic-English-handwritten-OCR">Demo</a>&nbsp&nbsp </a>
 </p>

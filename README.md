@@ -144,7 +144,7 @@ Training is currently limited to Naskh, Ruq'ah, and Maghrebi scripts. It may be 
 <table>
 <tr>
 <td><img src="https://huggingface.co/sherif1313/Arabic-English-handwritten-OCR-v3/resolve/main/assets/5.png" style="width: 300px"></td>
-<td><img src="https://huggingface.co/sherif1313/Arabic-English-handwritten-OCR-v3/resolve/main/assets/19.png" style="width: 300px"></td>
+<td><img src="https://huggingface.co/sherif1313/Arabic-English-handwritten-OCR-v3/resolve/main/assets/Screenshot at 2025-12-27 06-52-18.png" style="width: 300px"></td>
 </table>
 <table>
 <tr>

@@ -1,0 +1,297 @@
+import os
+# إلغاء تحذير التوازي للمكتبات
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+# إعدادات إدارة الذاكرة
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True,max_split_size_mb:128"
+
+import sys
+# زيادة حد التكرار
+sys.setrecursionlimit(10000)
+
+import glob
+import torch
+import numpy as np
+from PIL import Image
+from torch.utils.data import Dataset, DataLoader
+from transformers import (
+    AutoProcessor,
+    AutoModelForImageTextToText,
+    Seq2SeqTrainingArguments,
+    Seq2SeqTrainer,
+    default_data_collator,
+    TrainerCallback,
+    BitsAndBytesConfig
+)
+from peft import LoraConfig, get_peft_model, TaskType
+
+import Levenshtein
+from qwen_vl_utils import process_vision_info
+import gc
+import json
+from collections import Counter
+import re
+
+# ==================== الإعدادات ====================
+MERGED_MODEL_PATH = "/media/DATA2/finsh/Qwen2.5-VL-3B-Instruct/qwen25vl-merged-finetuned-merged" # استخدمت النموذج المدمج هنا
+DATA_DIR = "/KHATT/finsh/images"  # 
+OUTPUT_DIR = "./qwen25vl-new-25-12"
+BATCH_SIZE = 2
+GRAD_ACCUM = 4
+EPOCHS = 3
+LEARNING_RATE = 4e-5
+FILES_PER_CHUNK = 40
+START_CHUNK = 0
+MAX_IMAGE_SIZE = 1024
+# ==================== دالة تفريغ الذاكرة ====================
+def clear_memory():
+    """تفريغ الذاكرة بشكل كامل"""
+    gc.collect()
+    torch.cuda.empty_cache()
+    torch.cuda.synchronize()
+
+# ==================== تحميل النموذج والمعالج ====================
+device = "cuda" if torch.cuda.is_available() else "cpu"
+print(f"جاري تحميل النموذج المدمج والمعالج على {device.upper()}...")
+
+processor = AutoProcessor.from_pretrained(MERGED_MODEL_PATH, trust_remote_code=True)
+
+print("🔧 إعداد التكميم 4-bit باستخدام BitsAndBytesConfig...")
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_compute_dtype=torch.bfloat16,
+    bnb_4bit_use_double_quant=True,
+)
+
+clear_memory()
+
+print(f"🔄 جاري تحميل النموذج المدمج مع تكميم 4-bit من: {MERGED_MODEL_PATH}")
+model = AutoModelForImageTextToText.from_pretrained(
+    MERGED_MODEL_PATH,
+    quantization_config=bnb_config,
+    device_map="auto",
+    trust_remote_code=True,
+    low_cpu_mem_usage=True,
+)
+
+print("🔧 تطبيق QLoRA... إعداد محولات LoRA.")
+target_modules = [
+    "q_proj", "k_proj", "v_proj", "o_proj",
+    "gate_proj", "up_proj", "down_proj"
+]
+lora_config = LoraConfig(
+    r=16,
+    lora_alpha=32,
+    target_modules=target_modules,
+    lora_dropout=0.01,
+    bias="none",
+    task_type=TaskType.CAUSAL_LM
+)
+model = get_peft_model(model, lora_config)
+model.print_trainable_parameters()
+model.train()
+
+# ==================== جمع البيانات المحلية ====================
+def load_local_pairs(data_dir):
+    """جمع أزواج (صورة، نص) من مجلد محلي"""
+    image_extensions = ['.png', '.jpg', '.jpeg', '.tif', '.tiff', '.PNG', '.JPG', '.JPEG', '.TIF', '.TIFF']
+    image_paths = sorted(
+        glob.glob(os.path.join(data_dir, "*.png")) +
+        glob.glob(os.path.join(data_dir, "*.jpg")) +
+        glob.glob(os.path.join(data_dir, "*.jpeg"))
+    )
+    pairs = []
+    for img_path in image_paths:
+        txt_path = os.path.splitext(img_path)[0] + ".txt"
+        if os.path.exists(txt_path):
+            try:
+                with open(txt_path, "r", encoding="utf-8") as f:
+                    text = f.read().strip()
+                if text:
+                    image = Image.open(img_path).convert("RGB")
+                    # <<<<<<< Modified: إضافة مسار الملف إلى القاموس
+                    pairs.append({"image_path": img_path, "image": image, "text": text})
+            except Exception as e:
+                print(f"تخطي {img_path}: {e}")
+    print(f"✅ تم تحميل {len(pairs)} عينة من {data_dir}")
+    return pairs
+
+# ==================== معالجة عينة واحدة ====================
+# ==================== معالجة عينة واحدة ====================
+def preprocess_sample(sample):
+    try:
+        image = sample["image"]
+        
+        # <<<<<<< الإضافة الجديدة: تصغير الصورة إذا كانت كبيرة جداً
+        # نستخدم thumbnail للحفاظ على نسبة العرض إلى الارتفاع
+        if image.width > MAX_IMAGE_SIZE or image.height > MAX_IMAGE_SIZE:
+            original_size = (image.width, image.height)
+            image.thumbnail((MAX_IMAGE_SIZE, MAX_IMAGE_SIZE), Image.Resampling.LANCZOS)
+            print(f"🖼️ تم تصغير الصورة من {original_size} إلى {image.size}")
+        # >>>>>>> نهاية الإضافة
+
+        text = sample["text"]
+        width, height = image.size
+        
+        # هذه الخطوة تبقى كما هي لضمان توافق الأبعاد مع النموذج
+        new_width = ((width + 31) // 32) * 32
+        new_height = ((height + 31) // 32) * 32
+        image = image.resize((new_width, new_height), Image.LANCZOS)
+
+        messages_full = [
+            {"role": "user", "content": [{"type": "image", "image": image}, {"type": "text", "text": "ما هو النص العربي في هذه الصورة؟"}]},
+            {"role": "assistant", "content": [{"type": "text", "text": text}]}
+        ]
+        messages_question = [
+            {"role": "user", "content": [{"type": "image", "image": image}, {"type": "text", "text": "ما هو النص العربي في هذه الصورة؟"}]}
+        ]
+
+        full_text = processor.apply_chat_template(messages_full, tokenize=False, add_generation_prompt=False)
+        question_text = processor.apply_chat_template(messages_question, tokenize=False, add_generation_prompt=True)
+
+        image_inputs, _ = process_vision_info(messages_full)
+        inputs = processor(text=[full_text], images=image_inputs, padding="longest", truncation=False, return_tensors="pt")
+        question_inputs = processor(text=[question_text], images=image_inputs, return_tensors="pt")
+        question_len = question_inputs.input_ids.shape[1]
+
+        labels = inputs.input_ids.clone()
+        labels[:, :question_len] = -100
+
+        return {
+            "pixel_values": inputs.pixel_values.squeeze(0),
+            "image_grid_thw": inputs.image_grid_thw.squeeze(0),
+            "input_ids": inputs.input_ids.squeeze(0),
+            "attention_mask": inputs.attention_mask.squeeze(0),
+            "labels": labels.squeeze(0)
+        }
+    except Exception as e:
+        print(f"خطأ في المعالجة: {e}")
+        return None
+
+# ==================== كلاس مجموعة البيانات ====================
+class CustomImageDataset(Dataset):
+    def __init__(self, processed_samples):
+        self.samples = [s for s in processed_samples if s is not None]
+    def __len__(self):
+        return len(self.samples)
+    def __getitem__(self, idx):
+        return self.samples[idx]
+
+# ==================== كلاس لتتبع التقدم ====================
+class ProgressCallback(TrainerCallback):
+    def __init__(self, start_chunk):
+        self.start_chunk = start_chunk
+        self.loss_history = []
+    def on_train_begin(self, args, state, control, **kwargs):
+        print(f"🔄 بدء التدريب العميق من الدفعة {self.start_chunk}")
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        if "train_loss" in logs:
+            self.loss_history.append(logs["train_loss"])
+            print(f"📊 Step {state.global_step} - Loss: {logs['train_loss']:.4f}")
+
+# ==================== الدالة الرئيسية ====================
+def main():
+    samples = load_local_pairs(DATA_DIR)
+    if not samples:
+        raise ValueError("لم يتم العثور على بيانات!")
+
+    chunks = [samples[i:i + FILES_PER_CHUNK] for i in range(0, len(samples), FILES_PER_CHUNK)]
+    print(f"📊 إجمالي العينات: {len(samples)} | الدفعات: {len(chunks)}")
+
+    training_args = Seq2SeqTrainingArguments(
+        output_dir=OUTPUT_DIR,
+        per_device_train_batch_size=BATCH_SIZE,
+        per_device_eval_batch_size=BATCH_SIZE,
+        gradient_accumulation_steps=GRAD_ACCUM,
+        num_train_epochs=EPOCHS,
+        learning_rate=LEARNING_RATE,
+        lr_scheduler_type="cosine",
+        warmup_steps=200,
+        use_cpu=False,
+        bf16=torch.cuda.is_available() and torch.cuda.is_bf16_supported(),
+        fp16=torch.cuda.is_available() and not torch.cuda.is_bf16_supported(),
+        logging_steps=5,
+        eval_steps=500,
+        save_steps=500,
+        eval_strategy="steps",
+        save_strategy="steps",
+        load_best_model_at_end=True,
+        metric_for_best_model="eval_loss",
+        greater_is_better=False,
+        gradient_checkpointing=False,
+        dataloader_num_workers=0,
+        remove_unused_columns=False,
+        report_to="none",
+        dataloader_pin_memory=False,
+        optim="adafactor",
+        save_total_limit=2,
+        max_grad_norm=1.0,
+    )
+
+    progress_callback = ProgressCallback(START_CHUNK)
+
+    for chunk_idx in range(START_CHUNK, len(chunks)):
+        chunk = chunks[chunk_idx]
+        
+        # <<<<<<< Modified: عرض أسماء الملفات في الدفعة الحالية
+        print(f"\n{'='*60}")
+        print(f"🔄 تدريب الدفعة {chunk_idx + 1}/{len(chunks)} ({len(chunk)} عينة)")
+        print(f"📂 الملفات في هذه الدفعة:")
+        for i, sample in enumerate(chunk):
+            # استخراج اسم الملف فقط من المسار الكامل
+            filename = os.path.basename(sample['image_path'])
+            print(f"  - {i+1}. {filename}")
+        print(f"{'='*60}")
+        # >>>>>>> نهاية التعديل
+
+        clear_memory()
+
+        split_idx = int(0.9 * len(chunk))
+        train_samples = chunk[:split_idx]
+        eval_samples = chunk[split_idx:]
+        print(f"📊 التدريب: {len(train_samples)} | التقييم: {len(eval_samples)}")
+
+        def process_samples(samples_list, name):
+            processed = []
+            for i, s in enumerate(samples_list):
+                res = preprocess_sample(s)
+                if res is not None:
+                    processed.append(res)
+                if (i + 1) % 10 == 0:
+                    print(f"{name}: {i + 1}/{len(samples_list)}")
+            return processed
+
+        train_data = process_samples(train_samples, "التدريب")
+        eval_data = process_samples(eval_samples, "التقييم")
+
+        if not train_data:
+            print("⚠️ لا توجد بيانات تدريب صالحة — تخطي الدفعة.")
+            continue
+
+        train_dataset = CustomImageDataset(train_data)
+        eval_dataset = CustomImageDataset(eval_data) if eval_data else None
+
+        trainer = Seq2SeqTrainer(
+            model=model,
+            args=training_args,
+            train_dataset=train_dataset,
+            eval_dataset=eval_dataset,
+            data_collator=default_data_collator,
+            processing_class=processor,
+            callbacks=[progress_callback],
+        )
+
+        print("🚀 بدء التدريب العميق...")
+        trainer.train(resume_from_checkpoint=False)
+        
+        trainer.save_model()
+        processor.save_pretrained(OUTPUT_DIR)
+        print(f"✅ تم حفظ محولات LoRA بعد الدفعة {chunk_idx + 1}")
+        
+        del train_dataset, eval_dataset, train_data, eval_data, trainer
+        clear_memory()
+
+    print(f"\n🎉 اكتمل التدريب العميق! محولات LoRA النهائية محفوظة في: {OUTPUT_DIR}")
+
+if __name__ == "__main__":
+    main()

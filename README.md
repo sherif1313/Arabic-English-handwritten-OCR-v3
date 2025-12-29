@@ -138,28 +138,28 @@ Training is currently limited to Naskh, Ruq'ah, and Maghrebi scripts. It may be 
 ## 🖼️ Visualizations
 <table>
 <tr>
-<td><img src="assets/1.png" style="width: 500px"></td>
-<td><img src="assets/3.png" style="width: 500px"></td>
+<td><img src="https://huggingface.co/sherif1313/Arabic-English-handwritten-OCR-v3/resolve/main/assets/3.png" style="width: 500px"></td>
+<td><img src="https://huggingface.co/sherif1313/Arabic-English-handwritten-OCR-v3/resolve/main/assets/6.png" style="width: 500px"></td>
 </table>
 <table>
 <tr>
-<td><img src="assets/5.png" style="width: 300px"></td>
-<td><img src="assets/4.png" style="width: 300px"></td>
+<td><img src="https://huggingface.co/sherif1313/Arabic-English-handwritten-OCR-v3/resolve/main/assets/5.png" style="width: 300px"></td>
+<td><img src="https://huggingface.co/sherif1313/Arabic-English-handwritten-OCR-v3/resolve/main/assets/16.png" style="width: 300px"></td>
 </table>
 <table>
 <tr>
-<td><img src="assets/6.png" style="width: 500px"></td>
-<td><img src="assets/7.png" style="width: 500px"></td>
+<td><img src="https://huggingface.co/sherif1313/Arabic-English-handwritten-OCR-v3/resolve/main/assets/1.png" style="width: 500px"></td>
+<td><img src="https://huggingface.co/sherif1313/Arabic-English-handwritten-OCR-v3/resolve/main/assets/2.png" style="width: 500px"></td>
 <table>
 <table>
 <tr>
-<td><img src="assets/8.png" style="width: 500px"></td>
-<td><img src="assets/10.png" style="width: 500px"></td>
+<td><img src="https://huggingface.co/sherif1313/Arabic-English-handwritten-OCR-v3/resolve/main/assets/14.png" style="width: 500px"></td>
+<td><img src="https://huggingface.co/sherif1313/Arabic-English-handwritten-OCR-v3/resolve/main/assets/15.png" style="width: 500px"></td>
 </table>
 <table>
   <tr>
-<td><img src="assets/17.png" style="width: 500px"></td>
-<td><img src="assets/Screenshot at 2025-12-27 07-45-43.png" style="width: 500px"></td>
+<td><img src="https://huggingface.co/sherif1313/Arabic-English-handwritten-OCR-v3/resolve/main/assets/17.png" style="width: 500px"></td>
+<td><img src="https://huggingface.co/sherif1313/Arabic-English-handwritten-OCR-v3/resolve/main/assets/19.png" style="width: 500px"></td>
 </table
 
   
